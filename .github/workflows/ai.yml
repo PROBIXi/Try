@@ -1,4 +1,4 @@
-name: RDPburpcjk
+name: RDPburp
 
 on:
   workflow_dispatch:
@@ -16,6 +16,7 @@ jobs:
             -Name fDenyTSConnections -Value 0
           netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
           Restart-Service TermService -Force
+          Write-Host "RDP Enabled."
 
       - name: Create RDP User
         shell: pwsh
@@ -30,6 +31,7 @@ jobs:
 
           echo "RDP_USER=$user" >> $env:GITHUB_ENV
           echo "RDP_PASS=$pass" >> $env:GITHUB_ENV
+          Write-Host "RDP User Created."
 
       - name: Install Burp Suite Community (WINDOWS EXE)
         shell: pwsh
@@ -44,6 +46,7 @@ jobs:
           Write-Host "Installing Burp Suite silently..."
           Start-Process $exe -ArgumentList "-q", "-console", "-overwrite" -Wait -NoNewWindow
           Start-Sleep 20
+          Write-Host "Finishing installation ..."
 
           # Executable path find karo
           $target = "C:\Program Files\BurpSuiteCommunity\BurpSuiteCommunity.exe"
@@ -61,7 +64,7 @@ jobs:
             Write-Host "Burp Suite found at default path: $target"
           }
 
-          # Shortcut banana — dono desktops pe
+          # Runner desktop shortcut
           $runnerDesktop = "C:\Users\$env:USERNAME\Desktop"
           $publicDesktop  = "C:\Users\Public\Desktop"
 
@@ -104,14 +107,31 @@ jobs:
       - name: Connect Tailscale
         shell: pwsh
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
-            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
-            --hostname=gh-rdp-$env:GITHUB_RUN_ID
+          $authKey = "${{ secrets.TAILSCALE_AUTH_KEY }}"
 
-          Start-Sleep 10
+          if ([string]::IsNullOrEmpty($authKey)) {
+            Write-Host "ERROR: TAILSCALE_AUTH_KEY secret set nahi hai!"
+            Write-Host "Repo → Settings → Secrets → New secret → TAILSCALE_AUTH_KEY"
+            exit 1
+          }
+
+          Write-Host "Tailscale se connect ho raha hai..."
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
+            --auth-key="$authKey" `
+            --hostname=gh-rdp-$env:GITHUB_RUN_ID `
+            --accept-routes
+
+          Start-Sleep 15
+
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+
+          if ([string]::IsNullOrEmpty($ip)) {
+            Write-Host "ERROR: Tailscale IP nahi mila! Auth key check karo."
+            exit 1
+          }
+
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $ip"
+          Write-Host "Tailscale Connected! IP: $ip"
 
       - name: Show RDP Details
         shell: pwsh
@@ -122,4 +142,4 @@ jobs:
           Write-Host "PASSWORD    : $env:RDP_PASS"
           Write-Host "=============================="
 
-          while ($true) { Start-Sleep 300 }
+          while ($true) { Start-Sleep 300 }rt-Sleep 300 }
