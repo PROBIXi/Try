@@ -35,29 +35,71 @@ jobs:
         shell: pwsh
         run: |
           $url = "https://portswigger-cdn.net/burp/releases/download?product=community&version=2024.12.1&type=WindowsX64"
-          $exe = "$env:TEMP\burpsuite.exe"
+          $exe = "$env:TEMP\burpsuite_installer.exe"
 
-          Invoke-WebRequest $url -OutFile $exe
+          Write-Host "Downloading Burp Suite..."
+          Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
+          Write-Host "Download complete."
 
-          # Silent install
-          Start-Process $exe -ArgumentList "-q" -Wait
+          Write-Host "Installing Burp Suite silently..."
+          Start-Process $exe -ArgumentList "-q", "-console", "-overwrite" -Wait -NoNewWindow
+          Start-Sleep 20
 
-          # Desktop shortcut (Public Desktop)
-          $desktop = "C:\Users\Public\Desktop"
+          # Executable path find karo
           $target = "C:\Program Files\BurpSuiteCommunity\BurpSuiteCommunity.exe"
+          if (!(Test-Path $target)) {
+            Write-Host "Default path nahi mila, searching..."
+            $found = Get-ChildItem "C:\Program Files\" -Recurse -Filter "BurpSuiteCommunity.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              $target = $found.FullName
+              Write-Host "Found at: $target"
+            } else {
+              Write-Host "ERROR: BurpSuite executable nahi mila!"
+              exit 1
+            }
+          } else {
+            Write-Host "Burp Suite found at default path: $target"
+          }
 
-          $wsh = New-Object -ComObject WScript.Shell
-          $shortcut = $wsh.CreateShortcut("$desktop\Burp Suite Community.lnk")
-          $shortcut.TargetPath = $target
-          $shortcut.Save()
+          # Shortcut banana — dono desktops pe
+          $runnerDesktop = "C:\Users\$env:USERNAME\Desktop"
+          $publicDesktop  = "C:\Users\Public\Desktop"
+
+          foreach ($desktop in @($runnerDesktop, $publicDesktop)) {
+            if (Test-Path $desktop) {
+              $wsh = New-Object -ComObject WScript.Shell
+              $shortcut = $wsh.CreateShortcut("$desktop\Burp Suite Community.lnk")
+              $shortcut.TargetPath = $target
+              $shortcut.WorkingDirectory = (Split-Path $target)
+              $shortcut.Description = "Burp Suite Community Edition"
+              $shortcut.Save()
+              Write-Host "Shortcut created at: $desktop"
+            }
+          }
+
+          # RDP user ke desktop pe bhi shortcut
+          $rdpDesktop = "C:\Users\RDP\Desktop"
+          if (!(Test-Path $rdpDesktop)) {
+            New-Item -ItemType Directory -Path $rdpDesktop -Force | Out-Null
+          }
+          $wsh2 = New-Object -ComObject WScript.Shell
+          $sc2 = $wsh2.CreateShortcut("$rdpDesktop\Burp Suite Community.lnk")
+          $sc2.TargetPath = $target
+          $sc2.WorkingDirectory = (Split-Path $target)
+          $sc2.Description = "Burp Suite Community Edition"
+          $sc2.Save()
+          Write-Host "Shortcut also created at: $rdpDesktop"
 
       - name: Install Tailscale
         shell: pwsh
         run: |
           $url = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $path = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest $url -OutFile $path
+          Write-Host "Downloading Tailscale..."
+          Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+          Write-Host "Installing Tailscale..."
           Start-Process msiexec.exe -ArgumentList "/i `"$path`" /quiet /norestart" -Wait
+          Write-Host "Tailscale installed."
 
       - name: Connect Tailscale
         shell: pwsh
@@ -69,6 +111,7 @@ jobs:
           Start-Sleep 10
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+          Write-Host "Tailscale IP: $ip"
 
       - name: Show RDP Details
         shell: pwsh
